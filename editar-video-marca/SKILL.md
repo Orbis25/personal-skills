@@ -1,7 +1,7 @@
 ---
 name: editar-video-marca
-description: Edita un video con Remotion aplicando la identidad visual de marca del usuario (@oalonzodev: paleta, tipografía, subtítulos, wordmark, tarjetas papel, lower third) y visualiza en pantalla los conceptos que dice (listas, cifras, íconos, diagramas) con tendencias actuales. Úsala cuando pida editar un video "con mi marca", "con mi identidad visual", crear/actualizar su marca, o aplicar su estilo a un reel/TikTok/short.
-argument-hint: <ruta del video> [instrucciones extra: plataforma, tema, duración] | "crear marca" | "actualizar marca"
+description: Edita un video con Remotion aplicando la identidad visual de marca del usuario (@oalonzodev: paleta, tipografía, subtítulos, wordmark, tarjetas papel, lower third) y visualiza en pantalla los conceptos que dice (listas, cifras, íconos, diagramas) con tendencias actuales. También crea carruseles de Instagram con su personaje estilo Memoji y el caption del post. Úsala cuando pida editar un video "con mi marca", "con mi identidad visual", crear/actualizar su marca, aplicar su estilo a un reel/TikTok/short, o hacer "sliders"/carrusel/caption de un tema o video.
+argument-hint: <ruta del video> [instrucciones extra: plataforma, tema, duración] | "carrusel <tema o video>" | "caption" | "crear marca" | "actualizar marca"
 allowed-tools: Bash, Read, Write, Edit, Glob, Grep, WebSearch, WebFetch
 ---
 
@@ -10,10 +10,18 @@ Eres director creativo y editor de video. Tu trabajo: que **cada video salga con
 ## Entrada
 $ARGUMENTS
 
-Primer elemento: ruta del video (o carpeta de clips). Si no se da, usa `videosParaEditar/`. Si el argumento es `crear marca` o `actualizar marca`, ejecuta solo la Fase 0. Por defecto: vertical 1080x1920, 30 fps, Reels/TikTok.
+Primer elemento: ruta del video (o carpeta de clips). Si no se da, usa `videosParaEditar/`. Si el argumento es `crear marca` o `actualizar marca`, ejecuta solo la Fase 0. Si empieza por `carrusel`, ve a **Carrusel**; si es `caption`, ve a **Caption**. Por defecto: vertical 1080x1920, 30 fps, Reels/TikTok.
 
 ## La marca vive en un solo lugar (global)
-`~/.claude/marca/marca.md` es la fuente de verdad. Assets (logo, fuentes, sonidos de marca) en `~/.claude/marca/assets/`. **Nunca** guardes la marca dentro de un proyecto como única copia: en cada proyecto se genera `src/marca/` a partir de este archivo.
+`~/.claude/marca/marca.md` es la fuente de verdad. Assets (logo, fuentes, sonidos de marca) en `~/.claude/marca/assets/`. **Nunca** guardes la marca dentro de un proyecto como única copia: en cada proyecto se genera `src/marca/` a partir de este archivo. Si `~/.claude/marca/marca.md` no existe pero sí `kit/marca.md` (respaldo de la marca aprobada), cópialo a `~/.claude/marca/` antes de nada.
+
+### Kit (`~/.claude/skills/editar-video-marca/kit/`)
+- `index.tsx` → `src/marca/index.tsx`: tokens `M` + `Wordmark`, `Hook`, `Caption`, `LowerThird`, `PaperCard`, `NumberedCard`, `Fondo`, `KeyWord` (palabra gigante, `strike` para tachar), `CodeBlock` (líneas que se escriben en su frame `at`), `Verdict` (✓ ok / ✗ alerta), `Outro` ("PALABRA · escríbelo en comentarios" + handle).
+- `Avatar.tsx` → `src/marca/Avatar.tsx`: **personaje de marca estilo Memoji** (SVG, solo cabeza + manos): piel clara, pelo negro peinado hacia arriba con canas, lentes, barba completa. Expresiones: `sorpresa`, `piensa` (mano en la barbilla), `uff`, `explica` (dedo arriba), `guino`. Para más expresiones, se agregan en `caras`.
+- `CarruselEjemplo.tsx`: carrusel de 5 slides de referencia. `PruebaMarca.tsx`: prueba de marca.
+- `transcribe.mjs` → `scripts/`: transcripción palabra por palabra con `@remotion/whisper-webgpu` (`large-v3-turbo`, español).
+- `recorte.swift`: recorta el sujeto de una imagen con Vision de macOS (sin descargas): `swift recorte.swift in.png out.png`.
+- `marca.md`: respaldo de la marca aprobada.
 
 ### Fase 0 — Crear / actualizar la marca (solo si `marca.md` no existe o el usuario lo pide)
 1. Pregunta lo mínimo en un solo mensaje: nombre/handle, a qué se dedica y a quién le habla, tono (serio, cercano, irreverente…), logo y colores si ya existen, 2-3 creadores que admire. Si no responde algo, decide tú.
@@ -41,9 +49,13 @@ Primer elemento: ruta del video (o carpeta de clips). Si no se da, usa `videosPa
 ## Flujo
 
 ### 1. Análisis del material
-- `ffprobe` (duración, resolución, fps, rotación, audio).
-- Transcribe con timestamps por palabra (whisper.cpp / `@remotion/install-whisper-cpp`) → `videosParaEditar/<nombre>.json`.
+- `ffprobe` (duración, resolución, fps, rotación, audio). Los `.MOV` del iPhone vienen en 4K HEVC 60 fps: haz un proxy y trabaja sobre él (`ffmpeg -i in.MOV -vf "scale=1080:1920,fps=30" -c:v libx264 -crf 20 -preset fast -g 30 -af loudnorm=I=-14:TP=-1.5:LRA=11 -ar 48000 -c:a aac -b:a 192k videosParaEditar/<nombre>.mp4`), en segundo plano porque tarda.
+- Transcribe con `node scripts/transcribe.mjs videosParaEditar/<nombre>.mp4` → `videosParaEditar/<nombre>.json`. Luego **limpia la transcripción** en `src/<tema>-palabras.ts` (`[texto, inicio, fin][]`):
+  - Whisper a veces **duplica un tramo** (la primera versión termina en "¡Gracias!"): quita el duplicado.
+  - Corrige términos técnicos: "Cloud Code" → Claude Code, "cloud.md" → CLAUDE.md, "QRS" → CQRS, "pronteando" → prompteando, "Speed Drive and Development" → Spec-Driven Development, tildes.
+  - Si un término no se entiende con seguridad, córtalo del video en vez de inventarlo en pantalla.
 - Detecta silencios (`silencedetect=noise=-35dB:d=0.4`) y extrae 6-8 frames para ver encuadre, luz y dónde está la cara.
+- Corta también las **notas de producción** que dice en voz alta ("aquí vamos a agregar…", "zoom", "corta").
 
 ### 2. Mapa de conceptos (lo que hace que el video "hable en imágenes")
 Lee la transcripción y construye una tabla `concepto → momento (frame inicio/fin) → visual`:
@@ -68,6 +80,14 @@ Hook (0-3 s: la frase más fuerte primero + sello de marca + movimiento desde el
 - Toda animación con `useCurrentFrame` / `interpolate` / `spring`. Prohibido CSS transitions y `setTimeout`.
 - Audio: voz normalizada (-14 LUFS), música de marca a 10-15 % con ducking bajo la voz, SFX de marca en apariciones y cortes.
 - Mismo tratamiento en todos los videos: la regla es consistencia; los visuales de cada tema cambian, la piel no.
+- Patrón que funcionó (ver `ReelIAArquitectura`):
+  - Montaje con `RANGOS` de segundos fuente en orden de salida; dentro de cada rango, jump cut automático donde el hueco entre palabras supera 0,4 s; zoom alterno 1.0 / 1.07 por corte.
+  - **Hook flash-forward**: la frase más fuerte del video va primero; durante el hook el video baja ~300 px y el texto queda sobre fondo oscuro (nunca sobre la cara).
+  - Visuales sincronizados con un helper `w("palabra", despuésDeSeg)` que busca el inicio de la palabra en la transcripción.
+  - Cuando hay visual, **el video sube ~260 px** (spring de 10 frames) y el panel va entre la cara y el subtítulo (y 830-1300); nunca tapa la cara.
+  - El "comenta X" que diga a mitad de video se mueve al final como CTA, con `Outro`; si la frase final repite la del hook, hay loop.
+  - Marca de agua al 70 % con sombra (al 45 % no se lee sobre paredes claras).
+  - SFX de marca sintetizados con ffmpeg en `videosParaEditar/sfx/` (pop, whoosh, click, impact): sin licencias de terceros. Música solo si existe `videosParaEditar/musica.mp3` (12 %).
 
 ### 6. Revisión
 - `npx remotion still` en 6 frames (hook, subtítulo, un visual de concepto, lower third, zoom, outro) y revísalos tú mismo: ¿se reconoce la marca sin ver el logo?
@@ -77,6 +97,21 @@ Hook (0-3 s: la frase más fuerte primero + sello de marca + movimiento desde el
 
 ### 7. Render (solo si lo pido o si el comando trae "renderizar")
 `npx remotion render <CompId> out/<nombre>_final.mp4 --codec=h264 --crf=18`. Variantes 1:1 / 16:9 como composiciones aparte reutilizando `src/marca/`.
+
+## Carrusel (Instagram, "sliders")
+Del mismo tema del video (o del tema que diga), **5 slides 4:5 (1080×1350)** como composición `Carrusel<Tema>` con `<Series>` de 60 frames por slide (ver `kit/CarruselEjemplo.tsx`):
+1. Portada: pregunta/dolor del hook con la palabra clave en acento + subtítulo de una línea.
+2-4. Una idea por slide: problema → por qué pasa → solución, cada una con un visual de `src/marca/` (`PaperCard`, `KeyWord`, `Verdict`, `NumberedCard`, `CodeBlock`).
+5. Cierre: el "cómo" concreto + CTA "Comenta PALABRA y te lo explico. Guarda este post." y `@oalonzodev`.
+- Piel: fondo `M.bg` con cuadrícula de terminal (`M.surface`, 60 px), `Wordmark` arriba-izquierda, contador `n/5` en mono primario, "desliza →" abajo, márgenes 72 px.
+- **Personaje**: `Avatar` estilo Memoji, abajo-derecha, con borde color papel tipo sticker + sombra, leve rotación y **una expresión distinta por slide** acorde al mensaje (sorpresa → piensa → uff → explica → guiño) + un acento de marca al lado (`!?` alerta, `?` resaltado, `…`, `!` primario, `✦` resaltado).
+- Preferencias del usuario: **no** fotos suyas en gris; **no** su Memoji real (solo tiene una expresión); sí el personaje Memoji generado. Si pide más parecido o expresiones nuevas, se ajusta `Avatar.tsx`.
+- Exporta cada slide con `npx remotion still Carrusel<Tema> out/carrusel_<tema>/slideN.png --frame=$((N*60-16))` (springs quietos y cursor `_` encendido). Revisa una tira con `ffmpeg … hstack=5` y un zoom del personaje: que nada se solape con las tarjetas.
+
+## Caption
+Al terminar un carrusel o video, entrega el caption listo para pegar, en el tono de la marca (claro, directo, técnico-cercano), en bloques de código:
+- **Instagram (largo)**: hook = la pregunta de la portada; 2-3 párrafos cortos con problema → solución; lista con `→` de los puntos concretos; CTA "Comenta PALABRA y te lo explico 👇"; "Guárdalo para…"; 6-8 hashtags del nicho (#programacion #arquitecturadesoftware #inteligenciaartificial …). Máximo 2-3 emojis.
+- **TikTok/Shorts (corto)**: 3 líneas + CTA + 4 hashtags.
 
 ## Entrega (corto)
 - Ruta del MP4 o link de Studio, duración antes → después.

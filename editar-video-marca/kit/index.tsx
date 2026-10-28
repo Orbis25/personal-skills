@@ -47,6 +47,7 @@ export const Wordmark: React.FC<{ size?: number; opacity?: number }> = ({
         color: M.text,
         opacity,
         letterSpacing: -1,
+        textShadow: "0 2px 10px rgba(0,0,0,.6)",
       }}
     >
       oalonzo<span style={{ color: M.primary }}>.dev</span>
@@ -226,4 +227,127 @@ export const NumberedCard: React.FC<{ n: number; label: string }> = ({
 // Fondo base de marca
 export const Fondo: React.FC<{ children?: React.ReactNode }> = ({ children }) => (
   <AbsoluteFill style={{ background: M.bg }}>{children}</AbsoluteFill>
+);
+
+// Palabra gigante con pop; `strike` la tacha (ej. el anti-patrón que ya no tendrás)
+export const KeyWord: React.FC<{
+  text: string;
+  sub?: string;
+  color?: string;
+  strike?: boolean;
+}> = ({ text, sub, color = M.highlight, strike }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const pop = spring({ frame, fps, config: { damping: 14, stiffness: 180 } });
+  const line = strike ? spring({ frame: frame - 12, fps, config: { damping: 200 } }) : 0;
+  return (
+    <div style={{ textAlign: "center", transform: `scale(${interpolate(pop, [0, 1], [0.6, 1])})`, opacity: pop }}>
+      <div style={{ position: "relative", display: "inline-block" }}>
+        <span
+          style={{
+            fontFamily: M.fTitle,
+            fontWeight: 700,
+            fontSize: 132,
+            letterSpacing: -3,
+            color,
+            WebkitTextStroke: `8px ${M.bg}`,
+            paintOrder: "stroke fill",
+          }}
+        >
+          {text}
+        </span>
+        {strike ? (
+          <div
+            style={{
+              position: "absolute",
+              left: -10,
+              top: "52%",
+              height: 14,
+              borderRadius: 7,
+              width: `${line * 104}%`,
+              background: M.alert,
+            }}
+          />
+        ) : null}
+      </div>
+      {sub ? (
+        <div style={{ fontFamily: M.fMono, fontWeight: 700, fontSize: 44, color: M.text, marginTop: 6 }}>{sub}</div>
+      ) : null}
+    </div>
+  );
+};
+
+// Bloque de código: cada línea entra (con click) en su frame `at`, la última activa en resaltado
+export const CodeBlock: React.FC<{
+  title: string;
+  lines: { text: string; at: number }[];
+  width?: number;
+}> = ({ title, lines, width = 900 }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const inn = spring({ frame, fps, config: { damping: 200 } });
+  const shown = lines.filter((l) => frame >= l.at);
+  return (
+    <div
+      style={{
+        width,
+        background: M.surface,
+        border: `2px solid ${M.primary}`,
+        borderRadius: 18,
+        padding: "22px 30px",
+        boxShadow: "0 28px 60px rgba(0,0,0,.55)",
+        transform: `translateY(${interpolate(inn, [0, 1], [24, 0])}px)`,
+        opacity: inn,
+        fontFamily: M.fMono,
+        fontWeight: 500,
+        fontSize: 36,
+        lineHeight: 1.5,
+      }}
+    >
+      <div style={{ color: M.primary, fontWeight: 700, marginBottom: 8 }}>{title}</div>
+      {shown.map((l, i) => {
+        // escrito letra a letra en 8 frames
+        const chars = Math.ceil(interpolate(frame - l.at, [0, 8], [0, l.text.length], { extrapolateRight: "clamp" }));
+        return (
+          <div key={i} style={{ color: i === shown.length - 1 ? M.highlight : M.text, whiteSpace: "pre" }}>
+            {l.text.slice(0, chars)}
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+// Veredicto: buena práctica (ok) o anti-patrón (alerta)
+export const Verdict: React.FC<{ ok: boolean; label: string }> = ({ ok, label }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const inn = spring({ frame, fps, config: { damping: 14, stiffness: 180 } });
+  const c = ok ? M.ok : M.alert;
+  return (
+    <div
+      style={{
+        background: M.surface,
+        border: `3px solid ${c}`,
+        borderRadius: 18,
+        padding: "18px 30px",
+        display: "flex",
+        alignItems: "center",
+        gap: 22,
+        transform: `scale(${interpolate(inn, [0, 1], [0.85, 1])})`,
+        opacity: inn,
+      }}
+    >
+      <span style={{ fontFamily: M.fMono, fontWeight: 700, fontSize: 60, color: c }}>{ok ? "✓" : "✗"}</span>
+      <span style={{ fontFamily: M.fTitle, fontWeight: 700, fontSize: 52, color: M.text }}>{label}</span>
+    </div>
+  );
+};
+
+// Outro: "Escribe PALABRA y te lo explico" + handle
+export const Outro: React.FC<{ word: string; handle: string }> = ({ word, handle }) => (
+  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 18 }}>
+    <KeyWord text={word} sub="escríbelo en comentarios" />
+    <div style={{ fontFamily: M.fMono, fontWeight: 700, fontSize: 40, color: M.primary }}>{handle}</div>
+  </div>
 );
